@@ -1,0 +1,219 @@
+// ClipMind AI — data model.
+//
+// SQLite for zero-setup local development. The schema is written so a later
+// move to Postgres means changing only the datasource block: no SQLite-only
+// features are used, and status/enum-like columns are plain strings validated
+// by the same TypeScript unions the app already relies on.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  avatarUrl     String?
+  role          String   @default("owner")
+  plan          String   @default("free")
+  emailVerified Boolean  @default(false)
+  passwordHash  String
+  createdAt     DateTime @default(now())
+
+  // Stripe billing linkage; null until the user starts a checkout.
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+  subscriptionStatus   String?
+  currentPeriodEnd     DateTime?
+
+  uploads       VideoUpload[]
+  projects      Project[]
+  exports       ExportJob[]
+  notifications AppNotification[]
+  usage         UsageSummary?
+  resetTokens   PasswordResetToken[]
+
+  @@map("users")
+}
+
+model VideoUpload {
+  id             String   @id
+  ownerId        String
+  fileName       String
+  size           Float
+  mimeType       String
+  duration       Int      @default(0)
+  status         String   @default("queued")
+  thumbnailColor String
+  source         String
+  /// Path on disk relative to the storage root; null until bytes land.
+  storageKey     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@index([ownerId])
+  @@map("uploads")
+}
+
+model Project {
+  id             String   @id
+  ownerId        String
+  uploadId       String
+  title          String
+  status         String   @default("draft")
+  clipCount      Int      @default(0)
+  duration       Int      @default(0)
+  language       String   @default("English")
+  thumbnailColor String
+  /// Full transcript text, populated by the analysis pipeline.
+  transcript     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  owner  User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  upload VideoUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  clips  Clip[]
+
+  @@index([ownerId])
+  @@index([uploadId])
+  @@map("projects")
+}
+
+model Clip {
+  id           String  @id
+  projectId    String
+  title        String
+  /// Start offset in the source video, seconds.
+  startAt      Int
+  duration     Int
+  /// 0–100 predicted virality score.
+  score        Int     @default(0)
+  aspectRatio  String  @default("9:16")
+  hasCaptions  Boolean @default(false)
+  speakerCount Int     @default(1)
+  /// Model's one-line reason this moment was picked.
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  exports ExportJob[]
+
+  @@index([projectId])
+  @@map("clips")
+}
+
+model ExportJob {
+  id           String    @id
+  ownerId      String
+  projectId    String
+  clipId       String?
+  projectTitle String
+  clipTitle    String
+  status       String    @default("queued")
+  resolution   String    @default("1080p")
+  aspectRatio  String    @default("9:16")
+  size         Float     @default(0)
+  progress     Int       @default(0)
+  /// Rendered file location, relative to the storage root.
+  storageKey   String?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  clip  Clip? @relation(fields: [clipId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([projectId])
+  @@map("exports")
+}
+
+model AppNotification {
+  id        String   @id
+  ownerId   String
+  title     String
+  body      String
+  kind      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("notifications")
+}
+
+model UsageSummary {
+  ownerId            String   @id
+  creditsUsed        Int      @default(0)
+  creditsTotal       Int      @default(0)
+  storageUsed        Float    @default(0)
+  storageTotal       Float    @default(0)
+  minutesProcessed   Int      @default(0)
+  minutesIncluded    Int      @default(0)
+  renderMinutesUsed  Int      @default(0)
+  renderMinutesTotal Int      @default(0)
+  resetsAt           DateTime
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("usage")
+}
+
+model Invoice {
+  id          String   @id
+  ownerId     String?
+  number      String
+  amount      Int
+  status      String   @default("paid")
+  periodLabel String
+  downloadUrl String
+  issuedAt    DateTime @default(now())
+
+  @@index([ownerId])
+  @@map("invoices")
+}
+
+model PaymentMethod {
+  id        String  @id
+  ownerId   String?
+  brand     String
+  last4     String
+  expMonth  Int
+  expYear   Int
+  isDefault Boolean @default(false)
+
+  @@index([ownerId])
+  @@map("payment_methods")
+}
+
+model PasswordResetToken {
+  token     String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model ContactMessage {
+  id         String   @id
+  name       String
+  email      String
+  company    String
+  topic      String
+  message    String
+  receivedAt DateTime @default(now())
+
+  @@map("contact_messages")
+}
