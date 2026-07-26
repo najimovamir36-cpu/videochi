@@ -318,6 +318,26 @@ export const usageRepository = {
     const row = await prisma.usageSummary.findUnique({ where: { ownerId } });
     return row ? mapUsage(row) : null;
   },
+
+  /** Starting usage row for a brand-new account, sized to the free plan's limits. */
+  async createDefault(ownerId: string): Promise<UsageSummary> {
+    const DAY = 24 * 60 * 60 * 1000;
+    const row = await prisma.usageSummary.create({
+      data: {
+        ownerId,
+        creditsUsed: 0,
+        creditsTotal: 60,
+        storageUsed: 0,
+        storageTotal: 5 * 1024 * 1024 * 1024,
+        minutesProcessed: 0,
+        minutesIncluded: 60,
+        renderMinutesUsed: 0,
+        renderMinutesTotal: 60,
+        resetsAt: new Date(Date.now() + 30 * DAY),
+      },
+    });
+    return mapUsage(row);
+  },
 };
 
 export const billingRepository = {

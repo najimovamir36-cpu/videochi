@@ -3,6 +3,7 @@ import { env } from "@/server/core/env";
 import { DEMO_ACCOUNT } from "@/server/db/seed";
 import { sendMail } from "@/server/mail/mailer";
 import { passwordResetEmail } from "@/server/mail/templates";
+import { usageRepository } from "@/server/repositories/media-repository";
 import {
   passwordResetRepository,
   toPublicUser,
@@ -33,6 +34,7 @@ export const authService = {
       plan: "free",
       role: "owner",
     });
+    await usageRepository.createDefault(record.id);
 
     return toPublicUser(record);
   },

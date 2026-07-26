@@ -28,6 +28,13 @@ export interface DashboardOverview {
  * Read-model for the dashboard. Aggregating here keeps page components free of
  * data-shaping logic and gives us one place to optimise later.
  */
+/** Every account should get one at registration; this heals any that slipped through. */
+async function getOrCreateUsage(ownerId: string): Promise<UsageSummary> {
+  const existing = await usageRepository.findByOwner(ownerId);
+  if (existing) return existing;
+  return usageRepository.createDefault(ownerId);
+}
+
 export const workspaceService = {
   async getOverview(ownerId: string): Promise<DashboardOverview> {
     const [uploads, projects, exportJobs, usage, notifications, unreadNotifications] =
@@ -35,12 +42,11 @@ export const workspaceService = {
         uploadRepository.listByOwner(ownerId),
         projectRepository.listByOwner(ownerId),
         exportRepository.listByOwner(ownerId),
-        usageRepository.findByOwner(ownerId),
+        getOrCreateUsage(ownerId),
         notificationRepository.list(ownerId, 6),
         notificationRepository.unreadCount(ownerId),
       ]);
 
-    if (!usage) throw new NotFoundError("No usage record for this workspace.");
 
     const readyProjects = projects.filter((project) => project.status === "ready");
     const completedExports = exportJobs.filter((job) => job.status === "completed");
@@ -119,9 +125,7 @@ export const workspaceService = {
   },
 
   async getUsage(ownerId: string): Promise<UsageSummary> {
-    const usage = await usageRepository.findByOwner(ownerId);
-    if (!usage) throw new NotFoundError("No usage record for this workspace.");
-    return usage;
+    return getOrCreateUsage(ownerId);
   },
 
   async getBilling() {
