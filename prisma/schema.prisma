@@ -1,16 +1,16 @@
 // ClipMind AI — data model.
 //
-// SQLite for zero-setup local development. The schema is written so a later
-// move to Postgres means changing only the datasource block: no SQLite-only
-// features are used, and status/enum-like columns are plain strings validated
-// by the same TypeScript unions the app already relies on.
+// Postgres (Neon via Vercel's integration in production; any Postgres locally).
+// No Postgres-only features are used beyond the datasource itself — status/
+// enum-like columns are plain strings validated by the same TypeScript unions
+// the app already relies on.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

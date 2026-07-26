@@ -1,10 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import nodemailer, { type Transporter } from "nodemailer";
 
 import { env } from "@/server/core/env";
-import { storage } from "@/server/storage/local-storage";
 
 /**
  * Outbound email.
@@ -51,8 +51,13 @@ export async function sendMail(mail: Mail): Promise<{ delivered: "smtp" | "file"
     return { delivered: "smtp", location: String(info.messageId) };
   }
 
-  // File fallback: render a minimal RFC-822 message and drop it on disk.
-  const dir = path.join(storage.root, "mail");
+  // File fallback: render a minimal RFC-822 message and drop it on disk. On
+  // Vercel nothing written to disk survives past the request, so there's no
+  // STORAGE_DIR worth writing under — fall back to the OS temp dir and log
+  // the full message so it's at least inspectable in the function's logs.
+  const dir = env.BLOB_READ_WRITE_TOKEN
+    ? path.join(tmpdir(), "clipmind-mail")
+    : path.join(process.cwd(), env.STORAGE_DIR, "mail");
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `${Date.now()}-${sanitize(mail.to)}.eml`);
   const eml = [
@@ -66,6 +71,7 @@ export async function sendMail(mail: Mail): Promise<{ delivered: "smtp" | "file"
   ].join("\r\n");
   await writeFile(file, eml, "utf8");
   console.info(`[mail] SMTP not configured — wrote ${file}`);
+  if (env.BLOB_READ_WRITE_TOKEN) console.info(`[mail] message body:\n${eml}`);
   return { delivered: "file", location: file };
 }
 

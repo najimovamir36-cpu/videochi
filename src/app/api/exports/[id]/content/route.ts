@@ -1,10 +1,8 @@
-import { Readable } from "node:stream";
-
 import { NotFoundError } from "@/server/core/errors";
 import { route } from "@/server/http/responses";
 import { exportService } from "@/server/services/export-service";
 import { requireSession } from "@/server/services/session-service";
-import { storage } from "@/server/storage/local-storage";
+import { storage } from "@/server/storage";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,9 +19,9 @@ export const GET = route(async (_request: Request, context: RouteContext) => {
   }
 
   const { size } = await storage.stat(key);
-  const stream = storage.createReadStream(key);
+  const stream = await storage.readStream(key);
 
-  return new Response(Readable.toWeb(stream) as ReadableStream, {
+  return new Response(stream, {
     status: 200,
     headers: {
       "Content-Type": "video/mp4",

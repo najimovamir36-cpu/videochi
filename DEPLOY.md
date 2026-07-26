@@ -1,9 +1,10 @@
 # Deploying ClipMind AI to Railway
 
 Railway runs a **persistent container** with a real filesystem and no request
-time limit, so ClipMind's SQLite database, on-disk media storage, and the
-ffmpeg render pipeline all work with **no code changes**. A mounted Volume keeps
-the database and uploaded/rendered videos safe across deploys and restarts.
+time limit, so on-disk media storage and the ffmpeg render pipeline all work
+with **no code changes**. A mounted Volume keeps uploaded/rendered videos safe
+across deploys and restarts. The database is Postgres (see Step 2a) — Railway
+can provision one for you with one click.
 
 The repo already contains everything Railway needs:
 
@@ -11,6 +12,10 @@ The repo already contains everything Railway needs:
 - `postinstall` script — generates the Prisma client after install
 - ffmpeg/ffprobe binaries come from `ffmpeg-static` / `ffprobe-static` (npm), so
   no system ffmpeg is required.
+
+See also [DEPLOY-VERCEL.md](./DEPLOY-VERCEL.md) if you'd rather deploy to
+Vercel instead (serverless — needs Vercel Blob for storage, since there's no
+persistent disk there).
 
 ---
 
@@ -26,11 +31,20 @@ the `postinstall` script) is pushed.
 3. Railway detects Next.js and starts the first build. Let it run — it will fail
    or crash-loop until you finish Steps 3 and 4. That's expected.
 
-## Step 3 — Add a persistent Volume  ⚠️ required
+## Step 2a — Add a Postgres database
 
-Without a volume the SQLite DB and all uploads are wiped on every deploy.
+1. In the project → **+ New → Database → Add PostgreSQL**.
+2. Railway provisions it and exposes a `DATABASE_URL` reference variable you
+   can wire into the app service (Variables → **+ New Variable → Add
+   Reference** → pick the Postgres service's `DATABASE_URL`).
 
-1. Open the service → **Variables/Settings → Volumes → New Volume**.
+## Step 3 — Add a persistent Volume for media  ⚠️ required
+
+Without a volume all uploads and rendered exports are wiped on every deploy.
+(The database itself lives in the Postgres service from Step 2a, not on this
+volume.)
+
+1. Open the app service → **Variables/Settings → Volumes → New Volume**.
 2. **Mount path:** `/data`
 
 ## Step 4 — Set environment variables
@@ -40,7 +54,7 @@ Service → **Variables** → add these:
 | Variable | Value | Notes |
 |---|---|---|
 | `AUTH_SECRET` | `Ya6TBBf42HhUwvGlM2VEvmrO3Za02bexAT_GeoNL7Cs` | Session signing key. **Required in production.** A fresh random value was generated for you — or make your own with `openssl rand -base64 32`. |
-| `DATABASE_URL` | `file:/data/prod.db` | SQLite file on the volume. |
+| `DATABASE_URL` | *(reference to the Postgres service, from Step 2a)* | Do not hardcode this — reference the Postgres plugin's variable so it stays in sync. |
 | `STORAGE_DIR` | `/data/storage` | Uploaded + rendered media on the volume. |
 | `NEXT_PUBLIC_APP_URL` | `https://<your-app>.up.railway.app` | Set after Step 5 once you know the domain, then redeploy (it is baked into the client at build time). |
 

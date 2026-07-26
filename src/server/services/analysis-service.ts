@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { probeMedia } from "@/server/media/ffmpeg";
 import { buildCandidateMoments, detectSpeechRegions } from "@/server/pipeline/analyze";
 import { isClipSelectionConfigured, selectViralMoments } from "@/server/pipeline/select-clips";
@@ -8,7 +10,7 @@ import {
   projectRepository,
   uploadRepository,
 } from "@/server/repositories/media-repository";
-import { storage } from "@/server/storage/local-storage";
+import { storage } from "@/server/storage";
 import type { AspectRatio } from "@/types/media";
 import type { Project, VideoUpload } from "@/types/media";
 
@@ -52,19 +54,23 @@ export const analysisService = {
       language: "English",
     });
 
-    // Fire-and-forget: the pipeline updates the project status when it finishes.
-    void this.runPipeline(project, upload).catch(async (error) => {
-      console.error(`[analysis] pipeline failed for ${project.id}`, error);
-      await projectRepository.update(project.id, { status: "failed" }).catch(() => {});
-      await notificationRepository
-        .create({
-          ownerId: upload.ownerId,
-          title: "Analysis failed",
-          body: `We couldn't finish analysing “${project.title}”. Try re-uploading the video.`,
-          kind: "analysis",
-        })
-        .catch(() => {});
-    });
+    // Runs after the response is sent, but Vercel keeps the invocation alive
+    // for it (up to maxDuration) via `after()` — a plain fire-and-forget
+    // promise gets killed the instant the response goes out on serverless.
+    after(() =>
+      this.runPipeline(project, upload).catch(async (error) => {
+        console.error(`[analysis] pipeline failed for ${project.id}`, error);
+        await projectRepository.update(project.id, { status: "failed" }).catch(() => {});
+        await notificationRepository
+          .create({
+            ownerId: upload.ownerId,
+            title: "Analysis failed",
+            body: `We couldn't finish analysing “${project.title}”. Try re-uploading the video.`,
+            kind: "analysis",
+          })
+          .catch(() => {});
+      }),
+    );
 
     return project;
   },
@@ -77,55 +83,62 @@ export const analysisService = {
       return;
     }
 
-    const info = await probeMedia(storage.absolutePath(storageKey));
-    const duration = info.duration || upload.duration;
-    const maxMoments = maxMomentsFor(duration);
+    // Resolve the source to a local path once — ffmpeg/ffprobe need a real
+    // filesystem path, and on the blob backend that means one download shared
+    // by every step below rather than one per step.
+    const { clipsCreated, duration } = await storage.withLocalCopy(storageKey, async (sourcePath) => {
+      const info = await probeMedia(sourcePath);
+      const duration = info.duration || upload.duration;
+      const maxMoments = maxMomentsFor(duration);
 
-    const useAi = isTranscriptionConfigured() && isClipSelectionConfigured();
-    const speakerCount = info.hasAudio ? 1 : 0;
+      const useAi = isTranscriptionConfigured() && isClipSelectionConfigured();
+      const speakerCount = info.hasAudio ? 1 : 0;
 
-    let aiClips = 0;
-    if (useAi) {
-      const { text, segments } = await transcribeUpload(storageKey);
-      await projectRepository.setTranscript(project.id, text);
+      let aiClips = 0;
+      if (useAi) {
+        const { text, segments } = await transcribeUpload(sourcePath);
+        await projectRepository.setTranscript(project.id, text);
 
-      const moments = await selectViralMoments(segments, duration, maxMoments);
-      for (const moment of moments) {
-        await clipRepository.create({
-          projectId: project.id,
-          title: moment.title,
-          startAt: moment.startAt,
-          duration: moment.duration,
-          score: moment.score,
-          aspectRatio: DEFAULT_ASPECT,
-          hasCaptions: true,
-          speakerCount,
-          reason: moment.reason,
-        });
-        aiClips += 1;
+        const moments = await selectViralMoments(segments, duration, maxMoments);
+        for (const moment of moments) {
+          await clipRepository.create({
+            projectId: project.id,
+            title: moment.title,
+            startAt: moment.startAt,
+            duration: moment.duration,
+            score: moment.score,
+            aspectRatio: DEFAULT_ASPECT,
+            hasCaptions: true,
+            speakerCount,
+            reason: moment.reason,
+          });
+          aiClips += 1;
+        }
       }
-    }
 
-    // Fall back to audio-based analysis when there's no AI, or when the model
-    // returned nothing usable — so a project always ends up with clips.
-    if (aiClips === 0) {
-      const regions = await detectSpeechRegions(storage.absolutePath(storageKey), duration);
-      const moments = buildCandidateMoments(regions, duration, maxMoments);
-      for (const [index, moment] of moments.entries()) {
-        await clipRepository.create({
-          projectId: project.id,
-          title: `Highlight ${index + 1}`,
-          startAt: moment.startAt,
-          duration: moment.duration,
-          score: moment.score,
-          aspectRatio: DEFAULT_ASPECT,
-          hasCaptions: false,
-          speakerCount,
-        });
+      // Fall back to audio-based analysis when there's no AI, or when the model
+      // returned nothing usable — so a project always ends up with clips.
+      if (aiClips === 0) {
+        const regions = await detectSpeechRegions(sourcePath, duration);
+        const moments = buildCandidateMoments(regions, duration, maxMoments);
+        for (const [index, moment] of moments.entries()) {
+          await clipRepository.create({
+            projectId: project.id,
+            title: `Highlight ${index + 1}`,
+            startAt: moment.startAt,
+            duration: moment.duration,
+            score: moment.score,
+            aspectRatio: DEFAULT_ASPECT,
+            hasCaptions: false,
+            speakerCount,
+          });
+        }
       }
-    }
 
-    const clipsCreated = (await clipRepository.listByProject(project.id)).length;
+      const clipsCreated = (await clipRepository.listByProject(project.id)).length;
+      return { clipsCreated, duration };
+    });
+
     await projectRepository.update(project.id, {
       status: "ready",
       clipCount: clipsCreated,

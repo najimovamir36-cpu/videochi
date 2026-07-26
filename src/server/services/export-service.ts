@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { NotFoundError } from "@/server/core/errors";
 import { renderClip } from "@/server/pipeline/render";
 import {
@@ -7,7 +9,7 @@ import {
   projectRepository,
   uploadRepository,
 } from "@/server/repositories/media-repository";
-import { makeKey } from "@/server/storage/local-storage";
+import { makeKey } from "@/server/storage";
 import type { AspectRatio, ExportJob, ExportResolution } from "@/types/media";
 
 /**
@@ -51,33 +53,38 @@ export const exportService = {
       aspectRatio,
     });
 
-    void this.runRender(job.id, {
-      sourceKey,
-      startAt: clip.startAt,
-      duration: clip.duration,
-      resolution,
-      aspectRatio,
-    })
-      .then(async () => {
-        await notificationRepository.create({
-          ownerId: input.ownerId,
-          title: `${resolution} export ready`,
-          body: `“${clip.title}” is rendered and ready to download.`,
-          kind: "export",
-        });
+    // Runs after the response is sent, but Vercel keeps the invocation alive
+    // for it (up to maxDuration) via `after()` — a plain fire-and-forget
+    // promise gets killed the instant the response goes out on serverless.
+    after(() =>
+      this.runRender(job.id, {
+        sourceKey,
+        startAt: clip.startAt,
+        duration: clip.duration,
+        resolution,
+        aspectRatio,
       })
-      .catch(async (error) => {
-        console.error(`[export] render failed for ${job.id}`, error);
-        await exportRepository.update(job.id, { status: "failed" }).catch(() => {});
-        await notificationRepository
-          .create({
+        .then(async () => {
+          await notificationRepository.create({
             ownerId: input.ownerId,
-            title: "Export failed",
-            body: `We couldn't render “${clip.title}”. Please try again.`,
+            title: `${resolution} export ready`,
+            body: `“${clip.title}” is rendered and ready to download.`,
             kind: "export",
-          })
-          .catch(() => {});
-      });
+          });
+        })
+        .catch(async (error) => {
+          console.error(`[export] render failed for ${job.id}`, error);
+          await exportRepository.update(job.id, { status: "failed" }).catch(() => {});
+          await notificationRepository
+            .create({
+              ownerId: input.ownerId,
+              title: "Export failed",
+              body: `We couldn't render “${clip.title}”. Please try again.`,
+              kind: "export",
+            })
+            .catch(() => {});
+        }),
+    );
 
     return job;
   },
@@ -95,7 +102,7 @@ export const exportService = {
     await exportRepository.update(exportId, { status: "rendering", progress: 10 });
 
     const outKey = makeKey("exports", exportId, "clip.mp4");
-    const size = await renderClip({
+    const { bytes: size, key } = await renderClip({
       sourceKey: input.sourceKey,
       outKey,
       startAt: input.startAt,
@@ -104,7 +111,7 @@ export const exportService = {
       aspectRatio: input.aspectRatio,
     });
 
-    await exportRepository.setStorageKey(exportId, outKey);
+    await exportRepository.setStorageKey(exportId, key);
     await exportRepository.update(exportId, {
       status: "completed",
       progress: 100,

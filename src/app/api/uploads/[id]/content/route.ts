@@ -1,15 +1,19 @@
-import { Readable } from "node:stream";
-
 import { NotFoundError } from "@/server/core/errors";
 import { ok, route } from "@/server/http/responses";
 import { analysisService } from "@/server/services/analysis-service";
 import { requireSession } from "@/server/services/session-service";
 import { workspaceService } from "@/server/services/workspace-service";
-import { makeKey, storage } from "@/server/storage/local-storage";
+import { makeKey, storage } from "@/server/storage";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
+
+// The analysis pipeline (transcription + ffmpeg) runs in the background via
+// `after()` once the upload response is sent, so this invocation needs to stay
+// alive for the whole pipeline, not just the upload transfer. Vercel caps this
+// per plan (Hobby: 60s max, Pro/Fluid: up to 800s) — see DEPLOY-VERCEL.md.
+export const maxDuration = 300;
 
 /**
  * `PUT /api/uploads/[id]/content` — receives and stores the bytes for a
@@ -28,11 +32,13 @@ export const PUT = route(async (request: Request, context: RouteContext) => {
   // Resolve before reading the body so an unauthorised request is rejected
   // without transferring gigabytes first.
   const upload = await workspaceService.getUpload(user.id, id);
-  const key = makeKey("uploads", upload.id, upload.fileName);
+  const pathname = makeKey("uploads", upload.id, upload.fileName);
 
-  const received = request.body ? await storage.writeStream(key, request.body) : 0;
+  const { bytes, key } = request.body
+    ? await storage.writeStream(pathname, request.body)
+    : { bytes: 0, key: pathname };
 
-  const completed = await workspaceService.completeUpload(user.id, id, received, key);
+  const completed = await workspaceService.completeUpload(user.id, id, bytes, key);
 
   // Kick off analysis automatically — "upload a video, get shorts". The pipeline
   // runs in the background; the returned project starts in `analyzing`.
@@ -79,8 +85,8 @@ export const GET = route(async (request: Request, context: RouteContext) => {
       });
     }
 
-    const stream = storage.createReadStream(key, { start, end });
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
+    const stream = await storage.readStream(key, { start, end });
+    return new Response(stream, {
       status: 206,
       headers: {
         ...baseHeaders,
@@ -90,8 +96,8 @@ export const GET = route(async (request: Request, context: RouteContext) => {
     });
   }
 
-  const stream = storage.createReadStream(key);
-  return new Response(Readable.toWeb(stream) as ReadableStream, {
+  const stream = await storage.readStream(key);
+  return new Response(stream, {
     status: 200,
     headers: { ...baseHeaders, "Content-Length": String(size) },
   });

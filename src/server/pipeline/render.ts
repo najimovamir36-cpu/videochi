@@ -1,8 +1,5 @@
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-
 import { runFfmpeg } from "@/server/media/ffmpeg";
-import { storage } from "@/server/storage/local-storage";
+import { storage } from "@/server/storage";
 import type { AspectRatio, ExportResolution } from "@/types/media";
 
 /**
@@ -49,40 +46,37 @@ function makeEven(n: number): number {
   return n % 2 === 0 ? n : n + 1;
 }
 
-/** Renders the clip and returns the rendered file size in bytes. */
-export async function renderClip(input: RenderClipInput): Promise<number> {
-  const source = storage.absolutePath(input.sourceKey);
-  const target = storage.absolutePath(input.outKey);
-  await mkdir(path.dirname(target), { recursive: true });
-
+/** Renders the clip and returns the rendered file's byte size and storage key. */
+export async function renderClip(input: RenderClipInput): Promise<{ bytes: number; key: string }> {
   const [width, height] = targetDimensions(input.resolution, input.aspectRatio);
   const filter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`;
 
-  await runFfmpeg([
-    "-y",
-    "-ss",
-    String(input.startAt),
-    "-i",
-    source,
-    "-t",
-    String(input.duration),
-    "-vf",
-    filter,
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "20",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "128k",
-    "-movflags",
-    "+faststart",
-    target,
-  ]);
-
-  const { size } = await storage.stat(input.outKey);
-  return size;
+  return storage.withLocalCopy(input.sourceKey, (source) =>
+    storage.writeLocalFile(input.outKey, (target) =>
+      runFfmpeg([
+        "-y",
+        "-ss",
+        String(input.startAt),
+        "-i",
+        source,
+        "-t",
+        String(input.duration),
+        "-vf",
+        filter,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        target,
+      ]),
+    ),
+  );
 }

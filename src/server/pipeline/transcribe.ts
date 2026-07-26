@@ -1,9 +1,9 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { runFfmpeg } from "@/server/media/ffmpeg";
 import { transcriptionProvider } from "@/server/pipeline/providers";
-import { storage } from "@/server/storage/local-storage";
 
 /**
  * Speech-to-text via Whisper.
@@ -29,33 +29,32 @@ interface WhisperResponse {
   segments?: Array<{ start: number; end: number; text: string }>;
 }
 
+/** `sourcePath` is a local filesystem path to the source video (see `withLocalCopy`). */
 export async function transcribeUpload(
-  storageKey: string,
+  sourcePath: string,
 ): Promise<{ text: string; segments: TranscriptSegment[] }> {
   const provider = transcriptionProvider();
   if (!provider) throw new Error("No transcription provider is configured (set GROQ_API_KEY).");
 
-  const source = storage.absolutePath(storageKey);
-  const audioKey = `tmp/${path.basename(storageKey, path.extname(storageKey))}.mp3`;
-  const audioPath = storage.absolutePath(audioKey);
-  await mkdir(path.dirname(audioPath), { recursive: true });
-
-  // Downmix to 16 kHz mono MP3 — small, and all Whisper uses.
-  await runFfmpeg([
-    "-y",
-    "-i",
-    source,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-b:a",
-    "64k",
-    audioPath,
-  ]);
+  const dir = await mkdtemp(path.join(tmpdir(), "clipmind-audio-"));
+  const audioPath = path.join(dir, "audio.mp3");
 
   try {
+    // Downmix to 16 kHz mono MP3 — small, and all Whisper uses.
+    await runFfmpeg([
+      "-y",
+      "-i",
+      sourcePath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-b:a",
+      "64k",
+      audioPath,
+    ]);
+
     const bytes = await readFile(audioPath);
     const form = new FormData();
     form.append("file", new Blob([bytes], { type: "audio/mpeg" }), "audio.mp3");
@@ -81,6 +80,6 @@ export async function transcribeUpload(
 
     return { text: data.text ?? segments.map((s) => s.text).join(" "), segments };
   } finally {
-    await storage.remove(audioKey);
+    await rm(dir, { recursive: true, force: true });
   }
 }

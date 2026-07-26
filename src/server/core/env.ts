@@ -11,6 +11,9 @@ const envSchema = z.object({
   AUTH_SESSION_MAX_AGE: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
   DATABASE_URL: z.string().min(1).default("file:./dev.db"),
   STORAGE_DIR: z.string().min(1).default("./storage"),
+  // When set, media is stored in Vercel Blob instead of on disk (required on
+  // Vercel, where nothing written to the filesystem survives past the request).
+  BLOB_READ_WRITE_TOKEN: z.string().default(""),
   // Optional until the AI pipeline is exercised; empty string means "not configured".
   // GROQ is the recommended free option (free Whisper + free LLM, OpenAI-compatible).
   GROQ_API_KEY: z.string().default(""),
@@ -37,6 +40,7 @@ function loadEnv() {
     AUTH_SESSION_MAX_AGE: process.env.AUTH_SESSION_MAX_AGE,
     DATABASE_URL: process.env.DATABASE_URL,
     STORAGE_DIR: process.env.STORAGE_DIR,
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,

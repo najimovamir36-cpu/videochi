@@ -1,6 +1,6 @@
 import { BadRequestError, NotFoundError } from "@/server/core/errors";
 import { probeMedia } from "@/server/media/ffmpeg";
-import { storage } from "@/server/storage/local-storage";
+import { storage } from "@/server/storage";
 import {
   billingRepository,
   clipRepository,
@@ -178,8 +178,10 @@ export const workspaceService = {
     // Probe for real duration; a corrupt or non-media file fails the upload.
     let duration = 0;
     try {
-      const info = await probeMedia(storage.absolutePath(storageKey));
-      duration = info.duration;
+      duration = await storage.withLocalCopy(storageKey, async (path) => {
+        const info = await probeMedia(path);
+        return info.duration;
+      });
     } catch {
       await storage.remove(storageKey);
       await uploadRepository.update(upload.id, { status: "failed" });

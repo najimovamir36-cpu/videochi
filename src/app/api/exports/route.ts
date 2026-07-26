@@ -5,6 +5,11 @@ import { requireSession } from "@/server/services/session-service";
 import { workspaceService } from "@/server/services/workspace-service";
 import type { ExportJob } from "@/types/media";
 
+// The ffmpeg render runs in the background via `after()` once the response is
+// sent, so this invocation needs to stay alive for the whole render, not just
+// until the job is queued. Vercel caps this per plan — see DEPLOY-VERCEL.md.
+export const maxDuration = 300;
+
 /** `GET /api/exports` — render jobs for the signed-in user, newest first. */
 export const GET = route(async () => {
   const { user } = await requireSession();
