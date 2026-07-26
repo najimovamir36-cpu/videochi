@@ -32,8 +32,6 @@ export interface Session {
   expiresAt: string;
 }
 
-export type SocialProvider = "google" | "github" | "apple";
-
 export interface AuthResponse {
   user: User;
   expiresAt: string;

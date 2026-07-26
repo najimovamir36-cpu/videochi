@@ -54,6 +54,7 @@ Service → **Variables** → add these:
 | Variable | Value | Notes |
 |---|---|---|
 | `AUTH_SECRET` | `Ya6TBBf42HhUwvGlM2VEvmrO3Za02bexAT_GeoNL7Cs` | Session signing key. **Required in production.** A fresh random value was generated for you — or make your own with `openssl rand -base64 32`. |
+| `SITE_PASSPHRASE` | *(your choice)* | The one shared secret that gates entry to the whole app — there is no per-user password. **Required in production.** |
 | `DATABASE_URL` | *(reference to the Postgres service, from Step 2a)* | Do not hardcode this — reference the Postgres plugin's variable so it stays in sync. |
 | `DATABASE_URL_UNPOOLED` | *(same reference as `DATABASE_URL`)* | Railway's Postgres has no connection pooler in front of it, so this can just point at the same variable — see the comment in `prisma/schema.prisma`. |
 | `STORAGE_DIR` | `/data/storage` | Uploaded + rendered media on the volume. |
@@ -64,9 +65,7 @@ Service → **Variables** → add these:
 | Variable | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Free high-quality AI pipeline (Whisper + Llama). Get one at <https://console.groq.com> (no card). Without it, analysis uses the free ffmpeg fallback. |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | Real password-reset emails. Without them, emails are written to `/data/storage/mail/` as `.eml` files. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_CREATOR` / `STRIPE_PRICE_STUDIO` | Live billing. Without them, billing runs in display-only mode. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | "Continue with Google" sign-in — see the setup steps in DEPLOY-VERCEL.md (same steps here; just use your Railway domain for the redirect URI: `https://<your-app>.up.railway.app/api/auth/oauth/google/callback`). |
 
 ## Step 5 — Generate a public domain
 
@@ -76,13 +75,13 @@ Service → **Settings → Networking → Generate Domain**. Copy the
 
 ## Step 6 — Verify
 
-Open the domain and sign in with the demo account:
-
-- **Email:** `demo@clipmind.ai`
-- **Password:** `ClipMind2026!`
+Open the domain and enter the `SITE_PASSPHRASE` you set in Step 4 — this
+creates a brand-new blank workspace on the spot (there's no email/password to
+sign in with).
 
 Upload a video → it auto-analyzes → clips appear → export a clip → download the
-9:16 vertical short. The database seeds itself on first load.
+9:16 vertical short. The database seeds a demo project the first time it's
+accessed, separate from whatever workspace the passphrase creates for you.
 
 ---
 

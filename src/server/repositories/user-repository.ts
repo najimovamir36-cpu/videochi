@@ -25,12 +25,6 @@ export const userRepository = {
     return row ? mapUser(row) : null;
   },
 
-  async findByEmail(email: string): Promise<UserRecord | null> {
-    await ensureSeeded();
-    const row = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    return row ? mapUser(row) : null;
-  },
-
   async create(input: CreateUserInput): Promise<UserRecord> {
     await ensureSeeded();
     const row = await prisma.user.create({
@@ -54,28 +48,5 @@ export const userRepository = {
     if (!existing) return null;
     const row = await prisma.user.update({ where: { id }, data: patch });
     return mapUser(row);
-  },
-
-  async count(): Promise<number> {
-    await ensureSeeded();
-    return prisma.user.count();
-  },
-};
-
-export const passwordResetRepository = {
-  async create(userId: string, token: string, ttlMs: number): Promise<void> {
-    await ensureSeeded();
-    await prisma.passwordResetToken.create({
-      data: { token, userId, expiresAt: new Date(Date.now() + ttlMs) },
-    });
-  },
-
-  async consume(token: string): Promise<string | null> {
-    await ensureSeeded();
-    const entry = await prisma.passwordResetToken.findUnique({ where: { token } });
-    if (!entry) return null;
-    await prisma.passwordResetToken.delete({ where: { token } });
-    if (entry.expiresAt.getTime() < Date.now()) return null;
-    return entry.userId;
   },
 };

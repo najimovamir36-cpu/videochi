@@ -55,6 +55,7 @@ Project → **Settings → Environment Variables**:
 | Variable | Value | Notes |
 |---|---|---|
 | `AUTH_SECRET` | *(generate with `openssl rand -base64 32`)* | Session signing key. **Required in production.** |
+| `SITE_PASSPHRASE` | *(your choice)* | The one shared secret that gates entry to the whole app — there is no per-user password, registration, or social sign-in. **Required in production.** |
 | `NEXT_PUBLIC_APP_URL` | `https://<your-app>.vercel.app` | Set after your first deploy once you know the domain, then redeploy — it's baked into the client at build time. |
 
 `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are already set from Steps 3–4.
@@ -64,18 +65,7 @@ Project → **Settings → Environment Variables**:
 | Variable | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Free high-quality AI pipeline (Whisper + Llama). Get one at <https://console.groq.com> (no card). Without it, analysis uses the free ffmpeg fallback. |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | Real password-reset emails. Without them, the reset link is written to the function's logs instead (nothing persists to disk on Vercel). |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_CREATOR` / `STRIPE_PRICE_STUDIO` | Live billing. Without them, billing runs in display-only mode. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | "Continue with Google" sign-in. Without them, the button reports itself unavailable and email+password still works. See setup below. |
-
-### Setting up Google sign-in
-
-1. [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) → create a project if you don't have one.
-2. **Configure consent screen** (first time only): User type **External**, fill in the app name and your support email. The `openid`, `email`, `profile` scopes this app uses don't require Google's review, so you can publish it straight from Testing to Production without waiting on approval.
-3. **Create Credentials → OAuth client ID** → Application type **Web application**.
-   - **Authorized redirect URIs**: add exactly `https://videoch.vercel.app/api/auth/oauth/google/callback` (and `http://localhost:3100/api/auth/oauth/google/callback`, or whatever port you use locally, for local testing).
-   - Authorized JavaScript origins aren't required for this flow (it's a full-page redirect, not the Google Sign-In JS widget).
-4. Copy the **Client ID** and **Client secret** → set them as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Step 5's table) → redeploy.
 
 ## Step 6 — Deploy
 
@@ -91,13 +81,13 @@ deploy), set `NEXT_PUBLIC_APP_URL` to it (Step 5), and redeploy.
 
 ## Step 7 — Verify
 
-Open the domain and sign in with the demo account:
-
-- **Email:** `demo@clipmind.ai`
-- **Password:** `ClipMind2026!`
+Open the domain and enter the `SITE_PASSPHRASE` you set in Step 5 — this
+creates a brand-new blank workspace on the spot (there's no email/password to
+sign in with).
 
 Upload a video → it auto-analyzes → clips appear → export a clip → download
-the 9:16 vertical short. The database seeds itself on first load.
+the 9:16 vertical short. The database seeds a demo project the first time
+it's accessed, separate from whatever workspace the passphrase creates for you.
 
 ---
 

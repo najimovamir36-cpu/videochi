@@ -23,14 +23,10 @@ export const routes = {
   billing: "/billing",
 
   api: {
-    login: "/api/auth/login",
-    register: "/api/auth/register",
+    passphrase: "/api/auth/passphrase",
     logout: "/api/auth/logout",
     session: "/api/auth/session",
-    forgotPassword: "/api/auth/forgot-password",
-    resetPassword: "/api/auth/reset-password",
     profile: "/api/settings/profile",
-    password: "/api/settings/password",
     contact: "/api/contact",
     projects: "/api/projects",
     uploads: "/api/uploads",
