@@ -108,6 +108,24 @@ If you plan to process videos longer than a couple of minutes, either raise
 `maxDuration` (and enable Fluid Compute on Pro) or move this workload off
 Vercel entirely (Railway has no such limit — see DEPLOY.md).
 
+### Troubleshooting: "No more than 12 Serverless Functions... on the Hobby plan"
+
+This app has ~22 API routes plus several dynamic pages — more than Hobby's
+12-function-per-deployment cap if Vercel doesn't merge them into shared
+functions. In practice this has shown up as **flaky**: some deploys succeed
+(functions get merged), others fail with this error, without a code change in
+between — it seems tied to build-cache reuse. If a deploy fails with this
+error, retry with a clean cache:
+
+```
+vercel deploy --prod --force
+```
+
+(`--force` drops the build cache; without it, `--force` alone just forces a
+redeploy but may reuse the stale cache that caused the miscount.) If it keeps
+failing even with `--force`, the real fix is Vercel Pro (no function-count
+cap) rather than fighting the bundler.
+
 ### Notes
 
 - **Cold starts**: the ffmpeg/ffprobe binaries (`ffmpeg-static`/
