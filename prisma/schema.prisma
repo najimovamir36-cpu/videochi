@@ -11,7 +11,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // The app's runtime connection — pooled (e.g. Neon's PgBouncer endpoint) is
+  // fine and recommended here for serverless.
   url      = env("DATABASE_URL")
+  // `prisma migrate deploy` needs a direct, non-pooled connection: PgBouncer's
+  // transaction-mode pooling doesn't support the session-level advisory locks
+  // Migrate takes. Neon's Vercel integration sets DATABASE_URL_UNPOOLED for
+  // exactly this. On a plain Postgres with no pooler in front (Railway, local
+  // dev), set this to the same value as DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {

@@ -55,6 +55,7 @@ Service → **Variables** → add these:
 |---|---|---|
 | `AUTH_SECRET` | `Ya6TBBf42HhUwvGlM2VEvmrO3Za02bexAT_GeoNL7Cs` | Session signing key. **Required in production.** A fresh random value was generated for you — or make your own with `openssl rand -base64 32`. |
 | `DATABASE_URL` | *(reference to the Postgres service, from Step 2a)* | Do not hardcode this — reference the Postgres plugin's variable so it stays in sync. |
+| `DATABASE_URL_UNPOOLED` | *(same reference as `DATABASE_URL`)* | Railway's Postgres has no connection pooler in front of it, so this can just point at the same variable — see the comment in `prisma/schema.prisma`. |
 | `STORAGE_DIR` | `/data/storage` | Uploaded + rendered media on the volume. |
 | `NEXT_PUBLIC_APP_URL` | `https://<your-app>.up.railway.app` | Set after Step 5 once you know the domain, then redeploy (it is baked into the client at build time). |
 
