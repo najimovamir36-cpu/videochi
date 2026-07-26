@@ -32,6 +32,11 @@ export const registerUploadSchema = z.object({
   source: z.enum(["device", "youtube", "drive", "url"]).default("device"),
 });
 
+/** Body for `/api/uploads/[id]/complete` once the browser's direct-to-Blob PUT finishes. */
+export const completeUploadSchema = z.object({
+  key: z.string().min(1, "Missing storage key"),
+});
+
 export const importFromUrlSchema = z.object({
   url: z
     .string()
@@ -41,4 +46,5 @@ export const importFromUrlSchema = z.object({
 });
 
 export type RegisterUploadInput = z.infer<typeof registerUploadSchema>;
+export type CompleteUploadInput = z.infer<typeof completeUploadSchema>;
 export type ImportFromUrlInput = z.infer<typeof importFromUrlSchema>;

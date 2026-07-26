@@ -13,3 +13,12 @@ export type { StorageBackend } from "@/server/storage/types";
  * AI pipeline and email.
  */
 export const storage: StorageBackend = env.BLOB_READ_WRITE_TOKEN ? blobStorage : localStorage;
+
+/**
+ * True when uploads must go straight from the browser to Vercel Blob instead
+ * of through our own PUT route. Vercel's serverless functions reject request
+ * bodies over ~4.5 MB before your code even runs, so streaming a multi-GB
+ * video through a Vercel function is not possible — only the local backend
+ * (Railway, dev) can accept the whole-file PUT the old way.
+ */
+export const usingBlobStorage = Boolean(env.BLOB_READ_WRITE_TOKEN);

@@ -1,5 +1,6 @@
 "use client";
 
+import { upload as uploadToBlob } from "@vercel/blob/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { routes } from "@/config/routes";
@@ -15,9 +16,13 @@ import { resolveMimeType, validateFiles } from "@/lib/upload/validate-files";
 import type { VideoUpload } from "@/types/media";
 import type { UploadQueueSummary, UploadRejection, UploadTask, UploadTaskPatch } from "@/types/upload";
 
+type UploadTransport =
+  | { kind: "stream-put"; uploadUrl: string }
+  | { kind: "blob-direct"; pathname: string; handleUploadUrl: string; completeUrl: string };
+
 interface RegisteredUpload {
   upload: VideoUpload;
-  uploadUrl: string;
+  transport: UploadTransport;
 }
 
 export interface UseUploadQueueOptions {
@@ -85,6 +90,26 @@ export function useUploadQueue({
       });
       rateSamples.current.set(task.id, { time: Date.now(), loaded: 0, rate: 0 });
 
+      const reportProgress = (loaded: number, total: number) => {
+        const now = Date.now();
+        const previous = rateSamples.current.get(task.id);
+        let rate = previous?.rate ?? 0;
+
+        if (previous && now > previous.time) {
+          const instant = ((loaded - previous.loaded) * 1000) / (now - previous.time);
+          rate = smoothRate(previous.rate, Math.max(instant, 0));
+        }
+
+        rateSamples.current.set(task.id, { time: now, loaded, rate });
+
+        patchTask(task.id, {
+          progress: total === 0 ? 0 : Math.min(99.5, (loaded / total) * 100),
+          uploadedBytes: loaded,
+          speed: rate,
+          etaSeconds: rate > 0 ? Math.max(0, (total - loaded) / rate) : 0,
+        });
+      };
+
       try {
         // 1. Register metadata so the server can reject the file before transfer.
         const registered = await api.post<RegisteredUpload>(routes.api.uploads, {
@@ -94,33 +119,33 @@ export function useUploadQueue({
           source: "device",
         });
 
-        // 2. Stream the bytes with progress reporting.
-        await uploadFile<VideoUpload>({
-          url: registered.uploadUrl,
-          file: task.file,
-          method: "PUT",
-          headers: { "Content-Type": task.mimeType },
-          signal: controller.signal,
-          onProgress: ({ loaded, total, percent }) => {
-            const now = Date.now();
-            const previous = rateSamples.current.get(task.id);
-            let rate = previous?.rate ?? 0;
+        // 2. Move the bytes with progress reporting. Vercel's serverless
+        // functions reject request bodies over ~4.5 MB before your code even
+        // runs, so on that backend the browser PUTs straight to Vercel Blob
+        // instead of through our own route (see /api/uploads/route.ts).
+        if (registered.transport.kind === "blob-direct") {
+          const { pathname, handleUploadUrl, completeUrl } = registered.transport;
 
-            if (previous && now > previous.time) {
-              const instant = ((loaded - previous.loaded) * 1000) / (now - previous.time);
-              rate = smoothRate(previous.rate, Math.max(instant, 0));
-            }
+          const blob = await uploadToBlob(pathname, task.file, {
+            access: "public",
+            handleUploadUrl,
+            clientPayload: JSON.stringify({ uploadId: registered.upload.id }),
+            multipart: task.size > UPLOAD_LIMITS.chunkSize,
+            abortSignal: controller.signal,
+            onUploadProgress: ({ loaded, total }) => reportProgress(loaded, total),
+          });
 
-            rateSamples.current.set(task.id, { time: now, loaded, rate });
-
-            patchTask(task.id, {
-              progress: Math.min(99.5, percent),
-              uploadedBytes: loaded,
-              speed: rate,
-              etaSeconds: rate > 0 ? Math.max(0, (total - loaded) / rate) : 0,
-            });
-          },
-        });
+          await api.post(completeUrl, { key: blob.url });
+        } else {
+          await uploadFile<VideoUpload>({
+            url: registered.transport.uploadUrl,
+            file: task.file,
+            method: "PUT",
+            headers: { "Content-Type": task.mimeType },
+            signal: controller.signal,
+            onProgress: ({ loaded, total }) => reportProgress(loaded, total),
+          });
+        }
 
         patchTask(task.id, {
           status: "ready",
