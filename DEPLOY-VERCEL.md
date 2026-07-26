@@ -66,6 +66,16 @@ Project → **Settings → Environment Variables**:
 | `GROQ_API_KEY` | Free high-quality AI pipeline (Whisper + Llama). Get one at <https://console.groq.com> (no card). Without it, analysis uses the free ffmpeg fallback. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | Real password-reset emails. Without them, the reset link is written to the function's logs instead (nothing persists to disk on Vercel). |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_CREATOR` / `STRIPE_PRICE_STUDIO` | Live billing. Without them, billing runs in display-only mode. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | "Continue with Google" sign-in. Without them, the button reports itself unavailable and email+password still works. See setup below. |
+
+### Setting up Google sign-in
+
+1. [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) → create a project if you don't have one.
+2. **Configure consent screen** (first time only): User type **External**, fill in the app name and your support email. The `openid`, `email`, `profile` scopes this app uses don't require Google's review, so you can publish it straight from Testing to Production without waiting on approval.
+3. **Create Credentials → OAuth client ID** → Application type **Web application**.
+   - **Authorized redirect URIs**: add exactly `https://videoch.vercel.app/api/auth/oauth/google/callback` (and `http://localhost:3100/api/auth/oauth/google/callback`, or whatever port you use locally, for local testing).
+   - Authorized JavaScript origins aren't required for this flow (it's a full-page redirect, not the Google Sign-In JS widget).
+4. Copy the **Client ID** and **Client secret** → set them as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Step 5's table) → redeploy.
 
 ## Step 6 — Deploy
 

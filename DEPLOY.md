@@ -66,6 +66,7 @@ Service → **Variables** → add these:
 | `GROQ_API_KEY` | Free high-quality AI pipeline (Whisper + Llama). Get one at <https://console.groq.com> (no card). Without it, analysis uses the free ffmpeg fallback. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | Real password-reset emails. Without them, emails are written to `/data/storage/mail/` as `.eml` files. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_CREATOR` / `STRIPE_PRICE_STUDIO` | Live billing. Without them, billing runs in display-only mode. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | "Continue with Google" sign-in — see the setup steps in DEPLOY-VERCEL.md (same steps here; just use your Railway domain for the redirect URI: `https://<your-app>.up.railway.app/api/auth/oauth/google/callback`). |
 
 ## Step 5 — Generate a public domain
 

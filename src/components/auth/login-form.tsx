@@ -3,6 +3,7 @@
 import { ArrowRight, Mail } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
@@ -31,6 +32,17 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   // `next` is attacker-controlled, so it is filtered down to a same-origin path.
   const redirectTo = safeRedirectPath(searchParams.get("next"), routes.dashboard);
+
+  // Social sign-in redirects back here with `?error=` on failure (it can't
+  // return a JSON envelope — the provider sent the browser here directly).
+  const oauthError = searchParams.get("error");
+  useEffect(() => {
+    if (!oauthError) return;
+    toast.error("Sign-in failed", { description: oauthError });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("error");
+    window.history.replaceState({}, "", url);
+  }, [oauthError]);
 
   const form = useZodForm<LoginFormValues, LoginInput>({
     schema: loginSchema,

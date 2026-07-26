@@ -12,7 +12,8 @@ import {
 import { randomToken } from "@/server/security/crypto";
 import { hashPassword, needsRehash, verifyPassword } from "@/server/security/password";
 import type { ForgotPasswordInput, LoginInput, RegisterInput } from "@/lib/validations/auth";
-import type { User } from "@/types/auth";
+import type { OAuthProfile } from "@/server/services/oauth-service";
+import type { User, UserRecord } from "@/types/auth";
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
@@ -99,5 +100,46 @@ export const authService = {
   /** Credentials shown on the sign-in screen for reviewers and demos. */
   getDemoCredentials() {
     return { email: DEMO_ACCOUNT.email, password: DEMO_ACCOUNT.password };
+  },
+
+  /**
+   * Signs in with a verified OAuth profile, creating the account on first
+   * sign-in or linking to an existing email/password account of the same
+   * email on subsequent ones — so a user can freely switch between "sign in
+   * with Google" and email+password for the same account.
+   */
+  async continueWithOAuthProfile(profile: OAuthProfile): Promise<User> {
+    const existing = await userRepository.findByEmail(profile.email);
+    if (existing) {
+      const patch: Partial<UserRecord> = {};
+      if (profile.emailVerified && !existing.emailVerified) patch.emailVerified = true;
+      if (profile.avatarUrl && !existing.avatarUrl) patch.avatarUrl = profile.avatarUrl;
+
+      const record =
+        Object.keys(patch).length > 0
+          ? ((await userRepository.update(existing.id, patch)) ?? existing)
+          : existing;
+      return toPublicUser(record);
+    }
+
+    // OAuth accounts have no password of their own; a random, never-surfaced
+    // hash satisfies the column without creating a usable credential.
+    let record = await userRepository.create({
+      name: profile.name,
+      email: profile.email,
+      passwordHash: await hashPassword(randomToken(32)),
+      plan: "free",
+      role: "owner",
+    });
+    if (profile.avatarUrl || profile.emailVerified) {
+      record =
+        (await userRepository.update(record.id, {
+          ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+          ...(profile.emailVerified ? { emailVerified: true } : {}),
+        })) ?? record;
+    }
+    await usageRepository.createDefault(record.id);
+
+    return toPublicUser(record);
   },
 };
