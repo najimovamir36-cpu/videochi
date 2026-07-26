@@ -1,0 +1,22 @@
+# Railway deployment config for ClipMind AI.
+#
+# Railway runs a persistent container (unlike Vercel's serverless model), so
+# SQLite, on-disk media storage under STORAGE_DIR, and the ffmpeg render
+# pipeline all work unchanged. A Volume mounted at /data keeps the database and
+# uploaded/rendered media across deploys and restarts.
+#
+# Required setup in the Railway dashboard (see DEPLOY.md):
+#   1. Add a Volume mounted at  /data
+#   2. Set the environment variables listed in DEPLOY.md
+#      (at minimum AUTH_SECRET, DATABASE_URL, STORAGE_DIR).
+
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+# Apply pending migrations to the volume-backed database, then start Next.js.
+# `next start` binds 0.0.0.0 and honours Railway's injected $PORT automatically.
+startCommand = "npx prisma migrate deploy && npm run start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
